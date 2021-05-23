@@ -1,7 +1,15 @@
+namespace SpriteKind {
+    export const Neutral = SpriteKind.create()
+}
 function LevelStart () {
     info.startCountdown(60)
     game.showLongText("Prepare to defend yourself!", DialogLayout.Center)
 }
+sprites.onCreated(SpriteKind.Enemy, function (sprite) {
+    sprite.setStayInScreen(true)
+    tiles.placeOnRandomTile(sprite, assets.tile`EnemyStartOceanTile`)
+    sprite.follow(mySprite, EnemyBaseSpeed)
+})
 function LoadNeutralSprites () {
 	
 }
@@ -11,18 +19,25 @@ function InitLevels () {
 }
 function CheckProjectiles () {
     for (let projectileElement of Projectiles) {
-        if (Math.round(projectileElement.x) == Math.round(sprites.readDataNumber(projectileElement, "DestinationX")) && Math.round(projectileElement.y) == Math.round(sprites.readDataNumber(projectileElement, "DestinationY"))) {
-            for (let enemySpriteElement of EnemySprites) {
-                if (Math.round(projectileElement.x) == Math.round(enemySpriteElement.x) && Math.round(projectileElement.y) == Math.round(enemySpriteElement.y)) {
-                    music.bigCrash.play()
-                    enemySpriteElement.destroy(effects.fire, 500)
-                    EnemySprites.removeAt(EnemySprites.indexOf(enemySpriteElement))
-                }
-            }
-            projectileElement.setVelocity(0, 0)
-            projectileElement.destroy(effects.bubbles, 200)
-            music.thump.play()
+        if (Math.min(projectileElement.x, projectileElement.y) < 0) {
             Projectiles.removeAt(Projectiles.indexOf(projectileElement))
+            projectileElement.destroy()
+            if (EnemySprites.length <= 0) {
+                LevelWon()
+            }
+        } else {
+            if (Math.round(projectileElement.x) < Math.round(sprites.readDataNumber(projectileElement, "DestinationX")) && Math.round(projectileElement.y) < Math.round(sprites.readDataNumber(projectileElement, "DestinationY"))) {
+                for (let value of EnemySprites) {
+                    if (projectileElement.overlapsWith(value)) {
+                        music.bigCrash.play()
+                        value.destroy(effects.fire, 500)
+                        EnemySprites.removeAt(EnemySprites.indexOf(value))
+                        break;
+                    }
+                }
+                Projectiles.removeAt(Projectiles.indexOf(projectileElement))
+                projectileElement.destroy(effects.bubbles, 200)
+            }
         }
     }
 }
@@ -30,18 +45,18 @@ controller.A.onEvent(ControllerButtonEvent.Pressed, function () {
     Shoot()
 })
 function LoadLevel () {
-    LoadEnemySprites()
-    LoadNeutralSprites()
     scene.setBackgroundColor(8)
     tiles.setTilemap(tilemap`level1`)
     mySprite.setPosition(152, 112)
     Cursor.setPosition(144, 104)
     info.setLife(3)
+    LoadEnemySprites()
+    LoadNeutralSprites()
     LevelStart()
 }
 function LoadEnemySprites () {
     for (let index = 0; index <= 4; index++) {
-        newEnemy = sprites.create(img`
+        EnemySprites.push(sprites.create(img`
             . . . . . . . . . . . . . . . . 
             . . . . . . . . e 2 2 . . . . . 
             . . . . . . . . e . 2 2 . . . . 
@@ -58,14 +73,11 @@ function LoadEnemySprites () {
             . e e e e e e e e e e e e . 1 9 
             . . . . . . . . . . . . . . . . 
             . . . . . . . . . . . . . . . . 
-            `, SpriteKind.Enemy)
-        newEnemy.follow(mySprite, EnemyBaseSpeed)
-        tiles.placeOnRandomTile(newEnemy, assets.tile`myTile`)
-        EnemySprites.push(newEnemy)
+            `, SpriteKind.Enemy))
     }
 }
 info.onCountdownEnd(function () {
-	
+    LevelWon()
 })
 function Shoot () {
     if (MaxActiveProjectiles > Projectiles.length) {
@@ -85,8 +97,35 @@ function Shoot () {
         music.pewPew.play()
     }
 }
+sprites.onOverlap(SpriteKind.Enemy, SpriteKind.Player, function (sprite, otherSprite) {
+    info.changeLifeBy(-1)
+    sprite.destroy(effects.fire, 500)
+    music.wawawawaa.play()
+})
+scene.onOverlapTile(SpriteKind.Enemy, sprites.castle.tilePath5, function (sprite, location) {
+    sprite.setImage(img`
+        . . . . . . . . . . . . . . . . 
+        . . . . . . . . . . . . . . . . 
+        . . . . . . . . . . f f f . . . 
+        . . . . . . . f . . f 1 f . . f 
+        . . . . . . . . f . f f f . f . 
+        . . . f f f . . . f 1 f 1 f . . 
+        f . . f 1 f . . f . f f f . . . 
+        . f . f f f . f . . 1 f 1 . . . 
+        . . f 1 f 1 f . . . 1 f 1 . . . 
+        . . . f f f . . . . 1 f 1 . . . 
+        . . . 1 f 1 . . . . f . f . . . 
+        . . . 1 f 1 . . . f . . . f . . 
+        . . . 1 f 1 . . f . . . . . f . 
+        . . . f . f . . . . . . . . . . 
+        . . f . . . f . . . . . . . . . 
+        . f . . . . . f . . . . . . . . 
+        `)
+    music.footstep.play()
+    sprite.startEffect(effects.trail, 500)
+})
 info.onLifeZero(function () {
-	
+    InitGame()
 })
 function InitPlayerSprite () {
     info.setScore(0)
@@ -98,24 +137,23 @@ function InitGame () {
     InitLevels()
     LoadLevel()
 }
-function MoveEnemySprites () {
-    for (let enemySpriteElement of EnemySprites) {
-    	
-    }
-}
 function InitSpriteVariables () {
     SpriteTemplates = []
-    EnemySprites = []
-    NeutralSprites = []
+    EnemySprites = sprites.allOfKind(SpriteKind.Enemy)
+    NeutralSprites = sprites.allOfKind(SpriteKind.Neutral)
     Projectiles = []
     mySprite = sprites.create(assets.image`Base`, SpriteKind.Player)
-    Cursor = sprites.create(assets.image`Crosshair`, SpriteKind.Player)
+    Cursor = sprites.create(assets.image`Crosshair`, SpriteKind.Neutral)
     ProjectileBaseSpeed = -25
     MaxActiveProjectiles = 3
-    EnemyBaseSpeed = 1
+    EnemyBaseSpeed = 2
     InitPlayerSprite()
 }
-let NeutralSprites: number[] = []
+function LevelWon () {
+    CurrentLevelIndex += 1
+    LoadLevel()
+}
+let NeutralSprites: Sprite[] = []
 let SpriteTemplates: number[] = []
 let newProjectile: Sprite = null
 let ProjectileVelocityY = 0
@@ -124,16 +162,14 @@ let ProjectileVelocityX = 0
 let ProjectileDestinationY = 0
 let ProjectileDestinationX = 0
 let MaxActiveProjectiles = 0
-let EnemyBaseSpeed = 0
-let newEnemy: Sprite = null
 let Cursor: Sprite = null
-let mySprite: Sprite = null
 let EnemySprites: Sprite[] = []
 let Projectiles: Sprite[] = []
 let CurrentLevelIndex = 0
 let Levels: number[] = []
+let EnemyBaseSpeed = 0
+let mySprite: Sprite = null
 InitGame()
-game.onUpdate(function () {
+game.onUpdateInterval(200, function () {
     CheckProjectiles()
-    MoveEnemySprites()
 })
